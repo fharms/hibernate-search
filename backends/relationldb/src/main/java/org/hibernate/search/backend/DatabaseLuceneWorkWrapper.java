@@ -1,61 +1,42 @@
-/**
- * The MIT License
- * Copyright (c) 2015 Flemming Harms, Nicky Moelholm
+/*
+ * Hibernate Search, full-text search for your domain model
  *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
-package org.umbrew.hibernate.search.database.worker.backend;
+package org.hibernate.search.backend;
 
 import java.util.List;
 
-import org.hibernate.search.backend.LuceneWork;
-import org.hibernate.search.backend.impl.WorkVisitor;
-import org.umbrew.hibernate.search.database.worker.backend.impl.AbstractDatabaseHibernateSearchController;
-
 /**
- * Wrap a {@link LuceneWork} to distinguish between when it's processed by 
+ * Wrap a {@link LuceneWork} to distinguish between when it's processed by
  * {@link AbstractDatabaseHibernateSearchController} and {@link DatabaseBackendQueueProcessor}
  * <P>
- * This is because the method applyWork is called twice - once by the Hibernate Search infrastructure itself
- * and once indirectly by the persistLuceneWorkListToDatabase. 
+ * This is because the method applyWork is called twice - once by the Hibernate Search infrastructure itself and once
+ * indirectly by the persistLuceneWorkListToDatabase.
  * </p>
- * 
+ *
  * @author Flemming Harms (flemming.harms@gmail.com)
  * @author Nicky Moelholm (moelholm@gmail.com)
  */
 public class DatabaseLuceneWorkWrapper extends LuceneWork {
 
-    private static final long serialVersionUID = 0xCAFEBABE;
+	private static final long serialVersionUID = 0xCAFEBABE;
 
-    private final List<LuceneWork> luceneWorkList;
+	private final List<LuceneWork> luceneWorkList;
 
-    public DatabaseLuceneWorkWrapper(List<LuceneWork> luceneWorkList) {
-        super(new Integer(1), "1", DatabaseLuceneWorkWrapper.class);
-        this.luceneWorkList = luceneWorkList;
-    }
+	public DatabaseLuceneWorkWrapper(List<LuceneWork> luceneWorkList) {
+		// TODO : FHARMS find the proper way to get the tenant ID
+		super( "1", new Integer( 1 ), "1", DatabaseLuceneWorkWrapper.class );
+		this.luceneWorkList = luceneWorkList;
+	}
 
-    @Override
-    public <T> T getWorkDelegate(WorkVisitor<T> visitor) {
-        return null;
-    }
+	public List<LuceneWork> getLuceneWorkList() {
+		return this.luceneWorkList;
+	}
 
-    public List<LuceneWork> getLuceneWorkList() {
-        return this.luceneWorkList;
-    }
+	@Override
+	public <P, R> R acceptIndexWorkVisitor(IndexWorkVisitor<P, R> visitor, P p) {
+		return null;
+	}
 }

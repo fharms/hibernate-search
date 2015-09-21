@@ -1,45 +1,28 @@
-/**
- * The MIT License
- * Copyright (c) 2015 Flemming Harms, Nicky Moelholm
+/*
+ * Hibernate Search, full-text search for your domain model
  *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
-package org.umbrew.hibernate.search.database.worker.backend.impl;
+package org.hibernate.search.backend.impl;
 
-import java.util.Collections;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 
 import javax.persistence.EntityManager;
 import javax.persistence.TypedQuery;
 
-import org.hibernate.Session;
+import org.hibernate.search.backend.DatabaseLuceneWorkWrapper;
+import org.hibernate.search.backend.DoWithEntityManager;
+import org.hibernate.search.backend.DoWithEntityManager.DoWithEntityManagerTask;
 import org.hibernate.search.backend.LuceneWork;
-import org.hibernate.search.engine.spi.SearchFactoryImplementor;
-import org.hibernate.search.impl.FullTextSessionImpl;
-import org.hibernate.search.indexes.impl.IndexManagerHolder;
+import org.hibernate.search.backend.model.LuceneDatabaseWork;
 import org.hibernate.search.indexes.spi.IndexManager;
+import org.hibernate.search.spi.SearchIntegrator;
 import org.hibernate.search.util.logging.impl.Log;
 import org.hibernate.search.util.logging.impl.LoggerFactory;
-import org.umbrew.hibernate.search.database.worker.backend.DatabaseLuceneWorkWrapper;
-import org.umbrew.hibernate.search.database.worker.backend.DoWithEntityManager;
-import org.umbrew.hibernate.search.database.worker.backend.DoWithEntityManager.DoWithEntityManagerTask;
-import org.umbrew.hibernate.search.database.worker.backend.model.LuceneDatabaseWork;
 
 /**
  * @author Flemming Harms (flemming.harms@gmail.com)
@@ -47,101 +30,71 @@ import org.umbrew.hibernate.search.database.worker.backend.model.LuceneDatabaseW
  */
 public abstract class AbstractDatabaseHibernateSearchController {
 
-    private static final Log log = LoggerFactory.make();
+	private static final Log log = LoggerFactory.make();
 
-    private int luceneWorkBatchSize = 100;
+	protected abstract SearchIntegrator getSearchIntegrator();
 
-    /**
-     * Return the current or give a new session This session is not used per se, but is the link to access the Search configuration.
-     * <p>
-     * A typical EJB 3.0 usecase would be to get the session from the container (injected) eg in JBoss EJB 3.0
-     * <p>
-     * <code>
-     * &#64;PersistenceContext private Session session;<br>
-     * <br>
-     * protected Session getSession() {<br>
-     * &nbsp; &nbsp;return session<br>
-     * }<br>
-     * </code>
-     * <p>
-     * eg in any container<br>
-     * <code>
-     * &#64;PersistenceContext private EntityManager entityManager;<br>
-     * <br>
-     * protected Session getSession() {<br>
-     * &nbsp; &nbsp;return (Session) entityManager.getdelegate();<br>
-     * }<br>
-     * </code>
-     */
-    protected abstract Session getSession();
+	private int luceneWorkBatchSize = 100;
 
-    /**
-     * The session should normally only be closed if it has not been directly or indirectly injected by a container.
-     */
-    protected void cleanSessionIfNeeded(Session session) {
+	/**
+	 * Set the number of {@link LuceneDatabaseWork} is should process in one transaction <br>
+	 * <p>
+	 * Default is 100
+	 * </p>
+	 */
+	protected void setLuceneWorkBatchSize(int size) {
+		this.luceneWorkBatchSize = size;
+	}
 
-    }
+	/**
+	 * Process the Lucene worker queue by retrieve all the works from the table in chunk of
+	 * <code>luceneWorkBatchSize</code> and remove them when they are processed.
+	 */
+	public void processWorkQueue() {
 
-    /**
-     * Set the number of {@link LuceneDatabaseWork} is should process in one transaction
-     * <br>
-     * <p>
-     * Default is 100
-     * </p>
-     */
-    protected void setLuceneWorkBatchSize(int size) {
-        this.luceneWorkBatchSize = size;
-    }
+		final SearchIntegrator integrator = getSearchIntegrator();
 
-    /**
-     * Process the Lucene worker queue by retrieve all the works from the table
-     * in chunk of <code>luceneWorkBatchSize</code> and remove them when they
-     * are processed.
-     */
-    public void processWorkQueue() {
+		try {
 
-        Session session = getSession();
-        SearchFactoryImplementor factory = (SearchFactoryImplementor) new FullTextSessionImpl(session).getSearchFactory();
-        IndexManagerHolder indexManagerHolder = factory.getIndexManagerHolder();
-        
-        try {
+			DoWithEntityManager.execute( new DoWithEntityManagerTask() {
 
-            DoWithEntityManager.execute(new DoWithEntityManagerTask() {
-                @Override
-                @SuppressWarnings("unchecked")
-                public Void withEntityManager(EntityManager entityManager) {
-                    log.debug("Work queue processing started");
+				@Override
+				@SuppressWarnings("unchecked")
+				public Void withEntityManager(EntityManager entityManager) {
+					log.debug( "Work queue processing started" );
 
-                    String queryAsString = String.format("from %s order by id asc", LuceneDatabaseWork.class.getName());
-                    TypedQuery<LuceneDatabaseWork> query = entityManager.createQuery(queryAsString, LuceneDatabaseWork.class);
-                    query.setMaxResults(luceneWorkBatchSize);
-                    List<LuceneDatabaseWork> resultList = query.getResultList();
-                    log.debug(String.format("Found [%s] %ss", resultList.size(), LuceneDatabaseWork.class.getSimpleName()));
+					String queryAsString = String.format( Locale.ROOT, "from %s order by id asc", LuceneDatabaseWork.class.getName() );
+					TypedQuery<LuceneDatabaseWork> query = entityManager.createQuery( queryAsString, LuceneDatabaseWork.class );
+					query.setMaxResults( luceneWorkBatchSize );
+					List<LuceneDatabaseWork> resultList = query.getResultList();
+					log.debug( String.format( Locale.ROOT, "Found [%s] %ss", resultList.size(), LuceneDatabaseWork.class.getSimpleName() ) );
 
-                    for (LuceneDatabaseWork luceneWork : resultList) {
-                        String indexName = luceneWork.getIndexName();
-                        IndexManager indexManager = indexManagerHolder.getIndexManager(indexName);
-                        if (indexManager == null) {
-                            log.messageReceivedForUndefinedIndex(indexName);
-                            continue;
-                        }
-                        log.debug(String.format("Indexing [%s] [id=%s]", indexName, luceneWork.getId()));
-                        List<LuceneWork> queue = indexManager.getSerializer().toLuceneWorks(luceneWork.getContent());
-                        indexManager.performOperations(Collections.singletonList(new DatabaseLuceneWorkWrapper(queue)), null);
-                        entityManager.remove(luceneWork);
-                    }
+					for ( LuceneDatabaseWork luceneWork : resultList ) {
+						String indexName = luceneWork.getIndexName();
+						IndexManager indexManager = integrator.getIndexManager( indexName );
+						if ( indexManager == null ) {
+							log.messageReceivedForUndefinedIndex( indexName );
+							continue;
+						}
+						log.debug( String.format( Locale.ROOT, "Indexing [%s] [id=%s]", indexName, luceneWork.getId() ) );
+						List<LuceneWork> queue = indexManager.getSerializer().toLuceneWorks( luceneWork.getContent() );
+						List<LuceneWork> worker = new ArrayList<>((Collection<? extends LuceneWork>) new DatabaseLuceneWorkWrapper( queue ));
+						indexManager.performOperations( worker, null );
+						entityManager.remove( luceneWork );
+					}
 
-                    log.debug("Work queue processing finished");
-                    return null;
-                }
+					log.debug( "Work queue processing finished" );
+					return null;
+				}
 
-            });
+			} );
 
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        } finally {
-            cleanSessionIfNeeded(session);
-        }
-    }
+		}
+		catch (Exception e) {
+			throw new RuntimeException( e );
+		}
+		finally {
+		}
+	}
 
 }

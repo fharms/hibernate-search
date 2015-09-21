@@ -915,4 +915,11 @@ public interface Log extends BasicLogger {
 
 	@Message(id = 300, value = "Several @NumericField annotations used on %1$s#%2$s refer to the same field")
 	SearchException severalNumericFieldAnnotationsForSameField(@FormatWith(ClassFormatter.class) Class<?> entityClass, String memberName);
+
+        @Message(id = 301, value = "Error when executing lucene work task" )
+	RuntimeException errorWhenExecutingTask(@Cause Exception e);
+
+	@Message(id = 302, value = "Error resuming transaction" )
+	RuntimeException errorWhenResumingTransaction(@Cause Exception e);
+
 }
